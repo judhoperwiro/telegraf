@@ -1,0 +1,86 @@
+---
+- hosts: telegraf
+  remote_user: redhat
+  become: true
+  tasks:
+    - name: 01. prepare Source dir
+      file:
+        path: /Source
+        owner: root
+        group: root
+        mode: 0777
+        state: directory
+
+    - name: 02. Copy Package Telegraf to Client
+      copy:
+        src: /data/ansible/telegraf/source/telegraf-1.14.4-1.x86_64.rpm
+        dest: /Source
+
+    - name: 03. Install Telegraf
+      yum:
+        name:
+        - /Source/telegraf-1.14.4-1.x86_64.rpm
+
+    - name: 04. Insert New Line under the Regex configuration
+      lineinfile:
+        path: /etc/telegraf/telegraf.conf
+        regexp: '^  # logfile = ""'
+        insertafter: '^  # logtarget = "file" '
+        line: '   logfile = "/var/log/telegraf/telegraf.log"'
+
+    - name: 05. Insert Influx Output on telegraf.conf Configuration
+      lineinfile:
+        path: /etc/telegraf/telegraf.conf
+        regexp: '^  # urls = ["http://127.0.0.1:8086"]'
+        insertafter: '^  ## urls will be written to each interval.'
+        line: '   urls = ["http://{{ influx_ip }}:8086"]'
+
+    - name: 06. Insert New Line under the Regex configuration
+      lineinfile:
+        path: /etc/telegraf/telegraf.conf
+        regexp: '^  # database = "telegraf"'
+        insertafter: '^  # database = "telegraf"'
+        line: '   database = "telegraf"'
+
+    - name: 07. Start and enable Telegraf
+      systemd:
+        name: telegraf
+        state: started
+        enabled: yes
+
+    - name: 08. Edit telegraf.conf section urls
+      lineinfile:
+        path: /etc/telegraf/telegraf.conf
+        regexp: '^   urls ='
+        line: '   urls = ["http://kbdl-dc2-nonprd-mon-01:8086"]'
+
+    - name: 09. Edit telegraf.conf to setup logrotate 90 days
+      lineinfile:
+        path: /etc/telegraf/telegraf.conf
+        regexp: '^   logfile_rotation_interval ='
+        insertafter: '^  # logfile_rotation_interval ='
+        line: '   logfile_rotation_interval = "90d"'
+
+    - name: 10. Edit telegraf.conf to setup interval 60s
+      lineinfile:
+        path: /etc/telegraf/telegraf.conf
+        regexp: '^  interval ='
+        line: '  interval = "60s"'
+
+    - name: 11. Edit telegraf.conf to setup flush_interval 60s
+      lineinfile:
+        path: /etc/telegraf/telegraf.conf
+        regexp: '^  flush_interval ='
+        line: '  flush_interval = "60s"'
+
+    - name: 12. Restart Telegraf Service
+      systemd:
+        state: restarted
+        daemon_reload: yes
+        name: telegraf
+
+    - name: 10. Delete telegraf File
+      file:
+        path: /Source/telegraf-1.14.4-1.x86_64.rpm
+        state: absent
+      tags: delete
